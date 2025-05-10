@@ -1,16 +1,25 @@
+
 cat <<EOF > .gitignore
-# Exclude data and models
-datasets/
+# Ignore large notebooks and exports
+notebooks/*.ipynb
+notebooks/*.pdf
+notebooks/*.html
+
+# Ignore model weights and data
 models/
 *.pth
+datasets/
+results/Summary_of_my_work.txt
+*.png
+*.log
+*.doc
+*.docx
+*.html
 
-# Python/Notebook artifacts
+# Ignore cache and system files
 __pycache__/
 *.pyc
-.ipynb_checkpoints/
-
-# OS and IDE stuff
 .DS_Store
-*.swp
+.ipynb_checkpoints/
 EOF
 
