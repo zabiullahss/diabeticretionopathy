@@ -197,7 +197,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Set up logging
-    logger = setup_logger(f"{args.model_type.lower()}_{args.model_version}", "predict")
+    #logger = setup_logger(f"{args.model_type.lower()}_{args.model_version}", "predict")
+    logger = setup_logger(f"{args.model_type.lower()}_{args.model_version}_predict")
     logger.info(f"Starting prediction script for {args.model_type}-{args.model_version}")
     logger.info(f"Using device: {device}")
     

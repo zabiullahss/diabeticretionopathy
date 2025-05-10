@@ -582,7 +582,7 @@ def main():
     
     # Set up learning rate scheduler
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=5, verbose=True
+        optimizer, mode='max', factor=0.5, patience=5
     )
     logger.info("Using ReduceLROnPlateau scheduler")
     
@@ -603,6 +603,10 @@ def main():
     )
     
     logger.info("Training completed!")
+
+    # Create directory if it doesn't exist
+    os.makedirs(os.path.join("../results", args.model_type, args.model_version), exist_ok=True)
+
     
     # Save final results to a results.txt file for easy reference
     with open(os.path.join("../results", args.model_type, args.model_version, "results.txt"), 'w') as f:
