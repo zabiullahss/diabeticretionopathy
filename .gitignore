@@ -1,0 +1,16 @@
+cat <<EOF > .gitignore
+# Exclude data and models
+datasets/
+models/
+*.pth
+
+# Python/Notebook artifacts
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# OS and IDE stuff
+.DS_Store
+*.swp
+EOF
+
