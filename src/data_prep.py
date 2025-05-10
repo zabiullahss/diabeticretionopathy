@@ -10,7 +10,36 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import WeightedRandomSampler
 import time
+import logging
 from tqdm import tqdm
+
+# Set up logging
+def setup_logger():
+    logger = logging.getLogger('data_preparation')
+    logger.setLevel(logging.INFO)
+    
+    # Create logs directory if it doesn't exist
+    os.makedirs("../logs", exist_ok=True)
+    
+    # Create handlers
+    c_handler = logging.StreamHandler()
+    f_handler = logging.FileHandler("../logs/data_preparation.log")
+    c_handler.setLevel(logging.INFO)
+    f_handler.setLevel(logging.INFO)
+    
+    # Create formatters
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    c_handler.setFormatter(formatter)
+    f_handler.setFormatter(formatter)
+    
+    # Add handlers to the logger
+    logger.addHandler(c_handler)
+    logger.addHandler(f_handler)
+    
+    return logger
+
+# Initialize logger
+logger = setup_logger()
 
 # Define paths
 DATA_DIR = "../datasets/aptos2019-blindness-detection"
@@ -126,7 +155,9 @@ def preprocess_image(img_path, target_size=(512, 512), save_path=None):
     # Read image
     img = cv2.imread(img_path)
     if img is None:
-        raise ValueError(f"Failed to read image at {img_path}")
+        error_msg = f"Failed to read image at {img_path}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
     
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
@@ -173,10 +204,12 @@ def preprocess_and_save_all_images(csv_path, input_dir, output_dir, target_size=
     df = pd.read_csv(csv_path)
     total_images = len(df)
     
-    print(f"Starting preprocessing of {total_images} images...")
+    logger.info(f"Starting preprocessing of {total_images} images...")
     start_time = time.time()
     
     # Process each image with progress bar
+    processed_count = 0
+    error_count = 0
     for idx, row in tqdm(df.iterrows(), total=total_images, desc="Preprocessing images"):
         img_id = row['id_code']
         input_path = os.path.join(input_dir, img_id + '.png')
@@ -184,17 +217,20 @@ def preprocess_and_save_all_images(csv_path, input_dir, output_dir, target_size=
         
         # Skip if already processed
         if os.path.exists(output_path):
+            processed_count += 1
             continue
         
         # Preprocess and save
         try:
             preprocess_image(input_path, target_size, save_path=output_path)
+            processed_count += 1
         except Exception as e:
-            print(f"Error processing image {img_id}: {e}")
+            error_count += 1
+            logger.error(f"Error processing image {img_id}: {e}")
     
     elapsed_time = time.time() - start_time
-    print(f"Preprocessing complete. {total_images} images processed in {elapsed_time:.2f} seconds")
-    print(f"Preprocessed images saved to {output_dir}")
+    logger.info(f"Preprocessing complete. {processed_count} images processed successfully, {error_count} errors in {elapsed_time:.2f} seconds")
+    logger.info(f"Preprocessed images saved to {output_dir}")
 
 def visualize_preprocessing_samples(train_df, input_dir, output_dir, num_samples=3):
     """
@@ -206,6 +242,7 @@ def visualize_preprocessing_samples(train_df, input_dir, output_dir, num_samples
     output_dir (str): Directory containing preprocessed images
     num_samples (int): Number of samples to visualize from each class
     """
+    logger.info(f"Generating visualization with {num_samples} samples per class...")
     class_names = ['No DR', 'Mild', 'Moderate', 'Severe', 'Proliferative']
     num_classes = len(class_names)
     
@@ -250,8 +287,13 @@ def visualize_preprocessing_samples(train_df, input_dir, output_dir, num_samples
             ax.axis('off')
     
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'preprocessing_samples.png'))
-    plt.show()
+    
+    # Save visualization
+    os.makedirs(os.path.join(DATA_DIR, 'info'), exist_ok=True)
+    viz_path = os.path.join(DATA_DIR, 'info', 'preprocessing_samples.png')
+    plt.savefig(viz_path)
+    logger.info(f"Preprocessing visualization saved to {viz_path}")
+    plt.close()
 
 def load_and_split_data(csv_path, test_size=0.2, random_state=42):
     """
@@ -267,13 +309,13 @@ def load_and_split_data(csv_path, test_size=0.2, random_state=42):
     """
     # Load the data
     df = pd.read_csv(csv_path)
-    print(f"Loaded dataset with {len(df)} images")
+    logger.info(f"Loaded dataset with {len(df)} images")
     
     # Display class distribution
     class_dist = df['diagnosis'].value_counts().sort_index()
-    print("Class distribution:")
+    logger.info("Class distribution:")
     for i, count in enumerate(class_dist):
-        print(f"Class {i}: {count} images ({count/len(df)*100:.2f}%)")
+        logger.info(f"Class {i}: {count} images ({count/len(df)*100:.2f}%)")
     
     # Split with stratification to maintain class balance
     train_df, val_df = train_test_split(
@@ -283,13 +325,14 @@ def load_and_split_data(csv_path, test_size=0.2, random_state=42):
         stratify=df['diagnosis']
     )
     
-    print(f"\nAfter splitting:")
-    print(f"Training set: {len(train_df)} images")
-    print(f"Validation set: {len(val_df)} images")
+    logger.info(f"\nAfter splitting:")
+    logger.info(f"Training set: {len(train_df)} images")
+    logger.info(f"Validation set: {len(val_df)} images")
     
     # Save splits to CSV for reference
     train_df.to_csv(os.path.join(DATA_DIR, 'train_split.csv'), index=False)
     val_df.to_csv(os.path.join(DATA_DIR, 'val_split.csv'), index=False)
+    logger.info(f"Split datasets saved to {DATA_DIR}")
     
     return train_df, val_df
 
@@ -310,9 +353,9 @@ def calculate_class_weights(labels):
     )
     weights_dict = dict(zip(np.unique(labels), class_weights))
     
-    print("Class weights for balanced training:")
+    logger.info("Class weights for balanced training:")
     for class_idx, weight in weights_dict.items():
-        print(f"Class {class_idx}: {weight:.4f}")
+        logger.info(f"Class {class_idx}: {weight:.4f}")
     
     return weights_dict
 
@@ -364,7 +407,7 @@ def generate_dataset_info(train_df, val_df, processed_dir):
         f.write(f"\nImage size: {dataset_stats['image_size'][0]}x{dataset_stats['image_size'][1]}\n")
         f.write(f"Preprocessing: {dataset_stats['preprocessing']}\n")
     
-    print(f"Dataset information saved to {info_dir}")
+    logger.info(f"Dataset information saved to {info_dir}")
 
 def prepare_test_set():
     """
@@ -372,13 +415,13 @@ def prepare_test_set():
     """
     # Check if test CSV exists
     if not os.path.exists(TEST_CSV):
-        print("Test CSV not found. Skipping test set preprocessing.")
+        logger.warning("Test CSV not found. Skipping test set preprocessing.")
         return
     
     # Load test CSV
     test_df = pd.read_csv(TEST_CSV)
     
-    print(f"Preprocessing {len(test_df)} test images...")
+    logger.info(f"Preprocessing {len(test_df)} test images...")
     
     # Process and save test images
     preprocess_and_save_all_images(
@@ -388,17 +431,17 @@ def prepare_test_set():
         target_size=(512, 512)
     )
     
-    print("Test set preprocessing complete.")
+    logger.info("Test set preprocessing complete.")
 
 def main():
     """Main function to preprocess all images and prepare the dataset for training."""
-    print("Starting diabetic retinopathy image preprocessing pipeline...")
+    logger.info("Starting diabetic retinopathy image preprocessing pipeline...")
     
     # Step 1: Load and split the data
     train_df, val_df = load_and_split_data(TRAIN_CSV)
     
     # Step 2: Preprocess training images
-    print("\nPreprocessing training images...")
+    logger.info("\nPreprocessing training images...")
     preprocess_and_save_all_images(
         os.path.join(DATA_DIR, 'train_split.csv'),
         TRAIN_IMAGES_DIR,
@@ -407,7 +450,7 @@ def main():
     )
     
     # Step 3: Preprocess validation images
-    print("\nPreprocessing validation images...")
+    logger.info("\nPreprocessing validation images...")
     preprocess_and_save_all_images(
         os.path.join(DATA_DIR, 'val_split.csv'),
         TRAIN_IMAGES_DIR,
@@ -419,18 +462,18 @@ def main():
     prepare_test_set()
     
     # Step 5: Visualize some preprocessing examples
-    print("\nGenerating visualization of preprocessing results...")
+    logger.info("\nGenerating visualization of preprocessing results...")
     visualize_preprocessing_samples(train_df, TRAIN_IMAGES_DIR, PROCESSED_TRAIN_DIR)
     
     # Step 6: Generate dataset information for training phase
-    print("\nGenerating dataset information...")
+    logger.info("\nGenerating dataset information...")
     generate_dataset_info(train_df, val_df, PROCESSED_TRAIN_DIR)
     
-    print("\nAll preprocessing tasks completed successfully!")
-    print(f"Preprocessed training/validation images: {PROCESSED_TRAIN_DIR}")
-    print(f"Preprocessed test images: {PROCESSED_TEST_DIR}")
-    print(f"Dataset information: {os.path.join(DATA_DIR, 'info')}")
-    print("\nYou can now proceed to the model training phase.")
+    logger.info("\nAll preprocessing tasks completed successfully!")
+    logger.info(f"Preprocessed training/validation images: {PROCESSED_TRAIN_DIR}")
+    logger.info(f"Preprocessed test images: {PROCESSED_TEST_DIR}")
+    logger.info(f"Dataset information: {os.path.join(DATA_DIR, 'info')}")
+    logger.info("\nYou can now proceed to the model training phase.")
 
 if __name__ == "__main__":
     main()
